@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Historical Solar Data</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Menu</h2>
+        <a href="/">Home</a>
+        <a href="/historical">Historical Analysis</a>
+        <a href="/current">Current Analysis</a>
+        <a href="/overall">Overall World Analysis</a>
+        <a href="/suggestions">Suggestions</a>
+    </div>
+    <div class="main-content">
+        <h1>Historical Solar Data</h1>
+        <p>This section allows you to explore the historical solar energy potential of a given location. By analyzing past trends in solar radiation, cloud cover, and other weather parameters, you can better understand long-term solar energy patterns and assess if a location is suitable for solar panel installation.</p>
+
+        <div class="graph">
+            <h3>All Sky Insolation Clearness Index</h3>
+            <canvas id="ALLSKY_KT"></canvas>
+        </div>
+        <div class="graph">
+            <h3>All Sky Surface Shortwave Diffuse Irradiance</h3>
+            <canvas id="ALLSKY_SFC_SW_DIFF"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Clear Sky Days</h3>
+            <canvas id="CLRSKY_DAYS"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Cloud Amount</h3>
+            <canvas id="CLOUD_AMT"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Land Snowcover Fraction</h3>
+            <canvas id="FRSNO"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Top-Of-Atmosphere Shortwave Direct Normal Radiation</h3>
+            <canvas id="TOA_SW_DNI"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Surface Solar Radiation</h3>
+            <canvas id="ALLSKY_SFC_SW_DWN"></canvas>
+        </div>
+
+        <!-- Data Summary Table -->
+        <div id="data-summary">
+            <h2>Data Summary</h2>
+            <table id="summary-table">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Mean</th>
+                        <th>Median</th>
+                        <th>Mode</th>
+                        <th>Standard Deviation</th>
+                        <th>Min</th>
+                        <th>Max</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <!-- Rows will be added dynamically here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const storedLatitude = localStorage.getItem('latitude');
+            const storedLongitude = localStorage.getItem('longitude');
+
+            const parameters = [
+                {id: 'ALLSKY_KT', label: 'All Sky Insolation Clearness Index'},
+                {id: 'ALLSKY_SFC_SW_DIFF', label: 'All Sky Surface Shortwave Diffuse Irradiance'},
+                {id: 'CLRSKY_DAYS', label: 'Clear Sky Days'},
+                {id: 'CLOUD_AMT', label: 'Cloud Amount'},
+                {id: 'FRSNO', label: 'Land Snowcover Fraction'},
+                {id: 'TOA_SW_DNI', label: 'Top-Of-Atmosphere Shortwave Direct Normal Radiation'},
+                {id: 'ALLSKY_SFC_SW_DWN', label: 'Surface Solar Radiation'}
+            ];
+
+            function calculateStatistics(values) {
+                if (!values || values.length === 0) return { mean: 0, median: 0, mode: 0, standardDeviation: 0, min: 0, max: 0 };
+
+                const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
+                const sortedValues = values.slice().sort((a, b) => a - b);
+                const median = sortedValues.length % 2 === 0
+                    ? (sortedValues[sortedValues.length / 2 - 1] + sortedValues[sortedValues.length / 2]) / 2
+                    : sortedValues[Math.floor(sortedValues.length / 2)];
+
+                const mode = values.sort((a, b) =>
+                    values.filter(v => v === a).length - values.filter(v => v === b).length
+                ).pop();
+
+                const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+                const standardDeviation = Math.sqrt(variance);
+
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+
+                return { mean, median, mode, standardDeviation, min, max };
+            }
+
+            function fetchDataFromLocalStorage(parameter) {
+                const storageKey = `${storedLatitude}_${storedLongitude}_${parameter}`;
+                const data = localStorage.getItem(storageKey);
+                return data ? JSON.parse(data) : null;
+            }
+
+            function fetchDataAndRenderChart(parameter, canvasId, chartLabel) {
+                const data = fetchDataFromLocalStorage(parameter);
+
+                if (data && data.values && data.dates) {
+                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.dates,
+                            datasets: [{
+                                label: chartLabel,
+                                data: data.values,
+                                borderColor: 'rgb(255, 99, 132)',
+                                fill: false
+                            }]
+                        }
+                    });
+
+                    const stats = calculateStatistics(data.values);
+                    addRowToSummaryTable(chartLabel, stats);
+                } else {
+                    alert('Data not found in local storage or is incomplete. Please enter the latitude and longitude on the Home page.');
+                }
+            }
+
+            function addRowToSummaryTable(parameterName, stats) {
+                const tableBody = document.getElementById('table-body');
+                const newRow = document.createElement('tr');
+                newRow.innerHTML = `
+                    <td>${parameterName}</td>
+                    <td>${stats.mean.toFixed(2)}</td>
+                    <td>${stats.median.toFixed(2)}</td>
+                    <td>${stats.mode.toFixed(2)}</td>
+                    <td>${stats.standardDeviation.toFixed(2)}</td>
+                    <td>${stats.min.toFixed(2)}</td>
+                    <td>${stats.max.toFixed(2)}</td>
+                `;
+                tableBody.appendChild(newRow);
+            }
+
+            // Fetch and render charts for all parameters
+            if (storedLatitude && storedLongitude) {
+                parameters.forEach(param => {
+                    fetchDataAndRenderChart(param.id, param.id, param.label);
+                });
+            } else {
+                alert('Please enter the latitude and longitude on the Home page.');
+            }
+        });
+    </script>
+</body>
+</html>

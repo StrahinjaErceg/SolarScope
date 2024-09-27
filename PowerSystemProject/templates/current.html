@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Current Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Menu</h2>
+        <a href="/">Home</a>
+        <a href="/historical">Historical Analysis</a>
+        <a href="/current">Current Analysis</a>
+        <a href="/overall">Overall World Analysis</a>
+        <a href="/suggestions">Suggestions</a>
+    </div>
+    <div class="main-content">
+        <h1>Current Analysis</h1>
+        <p>This section provides real-time data on weather and solar conditions at your selected location. Here, you can observe the current weather, including temperature, humidity, wind speed, and solar radiation, to monitor the real-time performance of installed solar panels and ensure they are operating at their best.</p>
+
+        <div class="graph">
+            <h3>Surface Pressure</h3>
+            <canvas id="PS"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Air Temperature at 2 Meters</h3>
+            <canvas id="T2M"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Relative Humidity at 2 Meters</h3>
+            <canvas id="RH2M"></canvas>
+        </div>
+        <div class="graph">
+            <h3>Surface Wind Speed at 10 Meters</h3>
+            <canvas id="WS10M"></canvas>
+        </div>
+
+        <!-- Data Summary Table -->
+        <div id="data-summary">
+            <h2>Data Summary</h2>
+            <table id="summary-table">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Mean</th>
+                        <th>Median</th>
+                        <th>Mode</th>
+                        <th>Standard Deviation</th>
+                        <th>Min</th>
+                        <th>Max</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <!-- Rows will be added dynamically here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const storedLatitude = localStorage.getItem('latitude');
+            const storedLongitude = localStorage.getItem('longitude');
+
+            const parameters = [
+                {id: 'PS', label: 'Surface Pressure'},
+                {id: 'T2M', label: 'Air Temperature at 2 Meters'},
+                {id: 'RH2M', label: 'Relative Humidity at 2 Meters'},
+                {id: 'WS10M', label: 'Surface Wind Speed at 10 Meters'}
+            ];
+
+            function calculateStatistics(values) {
+                if (!values || values.length === 0) return { mean: 0, median: 0, mode: 0, standardDeviation: 0, min: 0, max: 0 };
+
+                const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
+                const sortedValues = values.slice().sort((a, b) => a - b);
+                const median = sortedValues.length % 2 === 0
+                    ? (sortedValues[sortedValues.length / 2 - 1] + sortedValues[sortedValues.length / 2]) / 2
+                    : sortedValues[Math.floor(sortedValues.length / 2)];
+
+                const mode = values.sort((a, b) =>
+                    values.filter(v => v === a).length - values.filter(v => v === b).length
+                ).pop();
+
+                const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+                const standardDeviation = Math.sqrt(variance);
+
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+
+                return { mean, median, mode, standardDeviation, min, max };
+            }
+
+            function fetchDataFromLocalStorage(parameter) {
+                const storageKey = `${storedLatitude}_${storedLongitude}_${parameter}`;
+                const data = localStorage.getItem(storageKey);
+                return data ? JSON.parse(data) : null;
+            }
+
+            function fetchDataAndRenderChart(parameter, canvasId, chartLabel) {
+                const data = fetchDataFromLocalStorage(parameter);
+
+                if (data && data.values && data.dates) {
+                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.dates,
+                            datasets: [{
+                                label: chartLabel,
+                                data: data.values,
+                                borderColor: 'rgb(255, 99, 132)',
+                                fill: false
+                            }]
+                        }
+                    });
+
+                    const stats = calculateStatistics(data.values);
+                    addRowToSummaryTable(chartLabel, stats);
+                } else {
+                    alert('Data not found in local storage or is incomplete. Please enter the latitude and longitude on the Home page.');
+                }
+            }
+
+            function addRowToSummaryTable(parameterName, stats) {
+                const tableBody = document.getElementById('table-body');
+                const newRow = document.createElement('tr');
+                newRow.innerHTML = `
+                    <td>${parameterName}</td>
+                    <td>${stats.mean.toFixed(2)}</td>
+                    <td>${stats.median.toFixed(2)}</td>
+                    <td>${stats.mode.toFixed(2)}</td>
+                    <td>${stats.standardDeviation.toFixed(2)}</td>
+                    <td>${stats.min.toFixed(2)}</td>
+                    <td>${stats.max.toFixed(2)}</td>
+                `;
+                tableBody.appendChild(newRow);
+            }
+
+            // Fetch and render charts for all parameters
+            if (storedLatitude && storedLongitude) {
+                parameters.forEach(param => {
+                    fetchDataAndRenderChart(param.id, param.id, param.label);
+                });
+            } else {
+                alert('Please enter the latitude and longitude on the Home page.');
+            }
+        });
+    </script>
+</body>
+</html>

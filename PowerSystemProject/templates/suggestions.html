@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Suggestions</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Menu</h2>
+        <a href="/">Home</a>
+        <a href="/historical">Historical Analysis</a>
+        <a href="/current">Current Analysis</a>
+        <a href="/overall">Overall World Analysis</a>
+        <a href="/suggestions">Suggestions</a>
+    </div>
+    <div class="main-content">
+        <h1>Installation Suggestions</h1>
+        <p>Based on the analysis of solar energy data at your selected location, this section provides recommendations on whether installing solar panels would be profitable. The suggestions are derived from the overall score of the location, which takes into account historical, current, and projected solar energy potential.</p>
+
+
+        <!-- Percentile Table -->
+        <div id="percentile-table-container">
+            <h2>Percentile Rankings and Overall Score</h2>
+            <table id="percentile-table">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Percentile</th>
+                    </tr>
+                </thead>
+                <tbody id="percentile-table-body">
+                    <!-- Percentile data will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Location Score -->
+        <div id="score-container">
+            <h2>Overall Score for Location</h2>
+            <p id="location-score"></p>
+            <div id="recommendation-message" style="font-weight: bold; margin-top: 10px;"></div> <!-- Dynamic recommendation message -->
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const storedLatitude = localStorage.getItem('latitude');
+            const storedLongitude = localStorage.getItem('longitude');
+
+            const parameterLabels = {
+                'ALLSKY_KT': 'All Sky Insolation Clearness Index',
+                'ALLSKY_SFC_SW_DIFF': 'All Sky Surface Shortwave Diffuse Irradiance',
+                'CLRSKY_DAYS': 'Clear Sky Days',
+                'CLOUD_AMT': 'Cloud Amount',
+                'FRSNO': 'Land Snowcover Fraction',
+                'TOA_SW_DNI': 'Top-Of-Atmosphere Shortwave Direct Normal Radiation',
+                'ALLSKY_SFC_SW_DWN': 'Surface Solar Radiation'
+            };
+
+            const weights = {
+                'ALLSKY_KT': 0.9,
+                'ALLSKY_SFC_SW_DIFF': 0.7,
+                'CLRSKY_DAYS': 0.8,
+                'CLOUD_AMT': 0.9,
+                'FRSNO': 0.7,
+                'TOA_SW_DNI': 0.7,
+                'ALLSKY_SFC_SW_DWN': 1
+            };
+
+            const locations = [
+                { lat: 37.7749, lon: -122.4194 }, // San Francisco, USA
+            { lat: 51.5074, lon: -0.1278 },   // London, UK
+            { lat: 35.6895, lon: 139.6917 },  // Tokyo, Japan
+            { lat: -33.8688, lon: 151.2093 }, // Sydney, Australia
+            { lat: 48.8566, lon: 2.3522 },    // Paris, France
+            { lat: -34.92, lon: -57.95 },     // Near Buenos Aires, Argentina (Random)
+            { lat: 19.8968, lon: -155.5828 }, // Hawaii, USA (Random)
+            { lat: 64.2008, lon: -149.4937 }, // Alaska, USA (Random)
+            { lat: 28.6139, lon: 77.2090 },   // Delhi, India
+            { lat: 25.7617, lon: -80.1918 },  // Miami, USA
+            { lat: -15.793889, lon: -47.882778 }, // Brasília, Brazil
+            { lat: 1.3521, lon: 103.8198 },   // Singapore
+            { lat: 19.0760, lon: 72.8777 },   // Mumbai, India
+            { lat: 44.4268, lon: 26.1025 },   // Bucharest, Romania
+            { lat: 64.9631, lon: -19.0208 },  // Iceland (Random)
+            { lat: -22.9068, lon: -43.1729 }, // Rio de Janeiro, Brazil
+            { lat: 35.6762, lon: 139.6503 },  // Tokyo, Japan
+            { lat: -26.2041, lon: 28.0473 },  // Johannesburg, South Africa
+            { lat: -33.9249, lon: 18.4241 },  // Cape Town, South Africa
+            { lat: -6.2088, lon: 106.8456 },  // Jakarta, Indonesia
+            { lat: 60.1699, lon: 24.9384 },   // Helsinki, Finland
+            { lat: 30.0444, lon: 31.2357 },   // Cairo, Egypt
+            { lat: -1.2921, lon: 36.8219 },   // Nairobi, Kenya
+            { lat: 6.5244, lon: 3.3792 },     // Lagos, Nigeria
+            { lat: 3.1390, lon: 101.6869 },   // Kuala Lumpur, Malaysia
+            { lat: 55.7558, lon: 37.6173 },   // Moscow, Russia
+            { lat: 23.6345, lon: -102.5528 }, // Mexico (Random)
+            { lat: 34.0522, lon: -118.2437 }, // Los Angeles, USA
+            { lat: 25.2048, lon: 55.2708 },   // Dubai, UAE
+            { lat: 52.5200, lon: 13.4050 }    // Berlin, Germany
+            ];
+
+            function calculatePercentile(value, dataArray) {
+                dataArray.sort((a, b) => a - b);
+                const index = dataArray.findIndex(item => item >= value);
+                const percentile = ((index === -1 ? dataArray.length : index) / dataArray.length);
+                return percentile.toFixed(4);  // Keep as decimal
+            }
+
+            function fetchDataFromLocalStorage(parameter, lat, lon) {
+                const storageKey = `${lat}_${lon}_${parameter}`;
+                const data = localStorage.getItem(storageKey);
+                return data ? JSON.parse(data).values : null;
+            }
+
+            function calculateAndDisplayPercentiles() {
+                const percentiles = {};
+
+                Object.keys(parameterLabels).forEach(parameter => {
+                    const userData = fetchDataFromLocalStorage(parameter, storedLatitude, storedLongitude);
+                    if (userData && userData.length) {
+                        const userAverage = userData.reduce((sum, val) => sum + val, 0) / userData.length;
+                        const locationAverages = locations.map(location => {
+                            const locationData = fetchDataFromLocalStorage(parameter, location.lat, location.lon);
+                            if (locationData && locationData.length) {
+                                return locationData.reduce((sum, val) => sum + val, 0) / locationData.length;
+                            } else {
+                                return null;
+                            }
+                        }).filter(value => value !== null);
+
+                        percentiles[parameter] = calculatePercentile(userAverage, locationAverages);
+                    } else {
+                        percentiles[parameter] = "N/A";
+                    }
+                });
+
+                return percentiles;
+            }
+
+            function calculateLocationScore(percentiles) {
+                const keys = Object.keys(percentiles);
+                let scoreSum = 0;
+                let validCount = 0;
+
+                keys.forEach(parameter => {
+                    let percentileValue = parseFloat(percentiles[parameter]);
+
+                    // Subtract from 100 for CLOUD_AMT and FRSNO to handle "lower is better"
+                    if (parameter === 'CLOUD_AMT' || parameter === 'FRSNO') {
+                        percentileValue = 1 - percentileValue;  // Adjust as a decimal
+                    }
+
+                    if (!isNaN(percentileValue)) {
+                        scoreSum += percentileValue * weights[parameter];
+                        validCount++;
+                    }
+                });
+
+                // Multiply by 100 to display as a percentage and return the final score
+                return validCount > 0 ? (scoreSum / validCount * 100).toFixed(2) : "N/A";
+            }
+
+            function renderPercentileTable(percentiles) {
+                const tableBody = document.getElementById('percentile-table-body');
+
+                Object.keys(percentiles).forEach(parameter => {
+                    let displayPercentile = parseFloat(percentiles[parameter]) * 100;  // Convert to percentage
+                    if (parameter === 'CLOUD_AMT' || parameter === 'FRSNO') {
+                        displayPercentile = 100 - displayPercentile;  // Inverse for these parameters
+                    }
+
+                    const newRow = document.createElement('tr');
+                    newRow.innerHTML = `
+                        <td>${parameterLabels[parameter]}</td>
+                        <td>${displayPercentile.toFixed(2)}%</td>
+                    `;
+                    tableBody.appendChild(newRow);
+                });
+            }
+
+            function displayRecommendation(score) {
+                const messageElement = document.getElementById('recommendation-message');
+                let recommendation = '';
+
+                if (score === "N/A") {
+                    recommendation = 'Insufficient data for an accurate recommendation.';
+                } else {
+                    const scoreValue = parseFloat(score);
+
+                    if (scoreValue > 50) {
+                        recommendation = 'The location is **highly profitable** for installing solar panels.';
+                        messageElement.style.color = 'green';
+                    } else if (scoreValue > 40) {
+                        recommendation = 'It is **most likely profitable** to install solar panels here.';
+                        messageElement.style.color = 'green';
+                    } else if (scoreValue > 30) {
+                        recommendation = 'This is a **neutral spot**, but **could** be profitable for solar panel installation.';
+                        messageElement.style.color = 'orange';
+                    } else {
+                        recommendation = 'This location is **not good** for solar panel installation.';
+                        messageElement.style.color = 'red';
+                    }
+                }
+
+                messageElement.innerText = recommendation;
+            }
+
+            if (storedLatitude && storedLongitude) {
+                const calculatedPercentiles = calculateAndDisplayPercentiles();
+                renderPercentileTable(calculatedPercentiles);
+
+                // Calculate the final score
+                const finalScore = calculateLocationScore(calculatedPercentiles);
+                document.getElementById('location-score').innerText = `${finalScore}%`;
+
+                // Display recommendation based on score
+                displayRecommendation(finalScore);
+            } else {
+                alert('Please enter the latitude and longitude on the Home page.');
+            }
+        });
+    </script>
+</body>
+</html>

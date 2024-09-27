@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solar Energy Monitoring Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Style for the loading popup */
+        #loadingPopup {
+            display: none; /* Initially hidden */
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            border: 2px solid #ccc;
+            padding: 20px;
+            z-index: 1000; /* Show above other elements */
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Menu</h2>
+        <a href="/">Home</a>
+        <a href="/historical">Historical Analysis</a>
+        <a href="/current">Current Analysis</a>
+        <a href="/overall">Overall World Analysis</a>
+        <a href="/suggestions">Suggestions</a>
+    </div>
+    <div class="main-content">
+        <h1>Solar Energy Monitoring Dashboard</h1>
+        <p>This tool analyzes the potential of a given location for solar energy generation. By evaluating multiple parameters such as solar radiation, cloud cover, and temperature, it determines the suitability of a specific location for installing solar panels.</p>
+         <p>To get started, please enter the latitude and longitude of the location you want to analyze for solar energy potential.</p>
+
+        <!-- User input form for custom coordinates -->
+        <form id="locationForm" style="display:none;">
+            <label for="latitude">Latitude:</label>
+            <input type="text" id="latitude" name="latitude">
+            <label for="longitude">Longitude:</label>
+            <input type="text" id="longitude" name="longitude">
+            <button type="submit">Save Location</button>
+        </form>
+    </div>
+    <!-- Loading popup -->
+    <div id="loadingPopup">Loading data, please wait...</div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loadingPopup = document.getElementById('loadingPopup');
+            const locationForm = document.getElementById('locationForm');
+            const latitudeInput = document.getElementById('latitude');
+            const longitudeInput = document.getElementById('longitude');
+
+            const historicalParameterKeys = [
+                "ALLSKY_KT",
+                "ALLSKY_SFC_SW_DIFF",
+                "CLRSKY_DAYS",
+                "CLOUD_AMT",
+                "FRSNO",
+                "TOA_SW_DNI",
+                "ALLSKY_SFC_SW_DWN"
+            ];
+
+            const currentParameterKeys = [
+                "PS",
+                "T2M",
+                "RH2M",
+                "WS10M"
+            ];
+
+            const locations = [
+                { lat: 37.7749, lon: -122.4194 }, // San Francisco, USA
+                // Other locations...
+            ];
+
+            function fetchDataAndStore(lat, lon, parameterKeys, type) {
+                return Promise.all(parameterKeys.map(async (parameter) => {
+                    try {
+                        const endpoint = type === 'monthly' ? 'monthly' : 'hourly';
+                        const response = await fetch(`/api/data/${endpoint}/${parameter}?latitude=${lat}&longitude=${lon}`);
+
+                        if (!response.ok) {
+                            console.warn(`Failed to fetch data for ${parameter}: ${response.statusText}`);
+                            return;  // Log the warning but don't stop the process
+                        }
+
+                        const data = await response.json();
+                        const storageKey = `${lat}_${lon}_${parameter}`;
+                        localStorage.setItem(storageKey, JSON.stringify(data));
+                    } catch (error) {
+                        console.error(`Error fetching data for ${parameter}:`, error);  // Log silently
+                    }
+                }));
+            }
+
+            function checkIfDataExists(keys, lat, lon) {
+                for (const parameter of keys) {
+                    const storageKey = `${lat}_${lon}_${parameter}`;
+                    if (!localStorage.getItem(storageKey)) {
+                        return false; // Data missing for at least one parameter
+                    }
+                }
+                return true; // All data exists
+            }
+
+            async function ensureMapDataIntegrity() {
+                loadingPopup.style.display = 'block'; // Show loading popup
+
+                for (const location of locations) {
+                    const { lat, lon } = location;
+
+                    if (!checkIfDataExists(historicalParameterKeys.concat(currentParameterKeys), lat, lon)) {
+                        console.log(`Data missing for location: (${lat}, ${lon}). Fetching now...`);
+                        await fetchDataAndStore(lat, lon, historicalParameterKeys, 'monthly');
+                        await fetchDataAndStore(lat, lon, currentParameterKeys, 'hourly');
+                    } else {
+                        console.log(`All data exists for location: (${lat}, ${lon}).`);
+                    }
+                }
+
+                loadingPopup.style.display = 'none'; // Hide loading popup after loading is complete
+                alert('All map data has been loaded successfully!');  // Success signal only
+            }
+
+            function startDataFetching(lat, lon) {
+                loadingPopup.style.display = 'block'; // Show loading popup
+
+                Promise.all([
+                    fetchDataAndStore(lat, lon, historicalParameterKeys, 'monthly'),
+                    fetchDataAndStore(lat, lon, currentParameterKeys, 'hourly')
+                ]).then(() => {
+                    calculateAndStorePercentiles(lat, lon);
+                    alert('Data for the selected location has been loaded successfully!');  // Success signal
+                    loadingPopup.style.display = 'none'; // Hide loading popup after loading is complete
+                    locationForm.style.display = 'block'; // Show the form
+                }).catch(error => {
+                    console.error('Error fetching data:', error);  // Log silently
+                    loadingPopup.style.display = 'none'; // Just hide the popup without showing the error alert
+                });
+            }
+
+            locationForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                const latitude = latitudeInput.value;
+                const longitude = longitudeInput.value;
+
+                if (latitude && longitude) {
+                    localStorage.setItem('latitude', latitude);
+                    localStorage.setItem('longitude', longitude);
+
+                    if (!checkIfDataExists(historicalParameterKeys.concat(currentParameterKeys), latitude, longitude)) {
+                        startDataFetching(latitude, longitude);
+                    } else {
+                        calculateAndStorePercentiles(latitude, longitude);
+                        alert('Data already exists for the selected location.');  // Success signal for existing data
+                        locationForm.style.display = 'block';
+                    }
+                } else {
+                    alert('Please enter valid latitude and longitude values.');
+                }
+            });
+
+            ensureMapDataIntegrity();
+            locationForm.style.display = 'block';
+        });
+    </script>
+</body>
+</html>
